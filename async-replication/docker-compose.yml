@@ -1,0 +1,63 @@
+services:
+  ansible:
+    container_name: ansible
+    build:
+      context: ../ansibleContainer
+    volumes:
+      - "../playbooks:/playbooks:ro"
+      - "./hosts:/etc/ansible/hosts:ro"
+    command: ["tail", "-f", "/dev/null"]
+    networks:
+      - asyncreplication
+
+  maxscale:
+    container_name: maxscale
+    image: mariadb/maxscale:latest
+    ports:
+      - "8989:8989"
+    networks:
+      - asyncreplication
+
+  db1:
+    container_name: db1
+    image: mariadb:latest
+    ports:
+      - "3341:3306"
+    volumes:
+      - db1:/var/lib/mysql
+    networks:
+      - asyncreplication
+    environment:
+      - MARIADB_ALLOW_EMPTY_ROOT_PASSWORD=yes
+
+  db2:
+    container_name: db2
+    image: mariadb:latest
+    ports:
+      - "3342:3306"
+    volumes:
+      - db2:/var/lib/mysql
+    networks:
+      - asyncreplication
+    environment:
+      - MARIADB_ALLOW_EMPTY_ROOT_PASSWORD=yes
+
+  db3:
+    container_name: db3
+    image: mariadb:latest
+    ports:
+      - "3343:3306"
+    volumes:
+      - db3:/var/lib/mysql
+    networks:
+      - asyncreplication
+    environment:
+      - MARIADB_ALLOW_EMPTY_ROOT_PASSWORD=yes
+
+volumes:
+  db1:
+  db2:
+  db3:
+
+networks:
+  asyncreplication: {}
