@@ -1,7 +1,7 @@
-[maxscale]
+[proxy]
   maxscale
 
-[dbs]
+[db]
   db1
   db2
   db3
