@@ -1,7 +1,20 @@
-[proxy]
-  maxscale
-
-[db]
-  db1
-  db2
-  db3
+all:
+  vars:
+    admin_user: root
+    replication_user: replication_user
+    replication_password: replication_password
+  children:
+    primary:
+      hosts:
+        db1:
+    replica:
+      hosts:
+        db2:
+        db3:
+    proxy:
+      hosts:
+        maxscale:
+    db:
+      children:
+        primary:
+        replica:

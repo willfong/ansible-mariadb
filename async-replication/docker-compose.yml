@@ -25,6 +25,7 @@ services:
       - "3341:3306"
     volumes:
       - db1:/var/lib/mysql
+      - "./my.cnf:/etc/mysql/conf.d/server.cnf"
     networks:
       - asyncreplication
     environment:
@@ -37,6 +38,7 @@ services:
       - "3342:3306"
     volumes:
       - db2:/var/lib/mysql
+      - "./my.cnf:/etc/mysql/conf.d/server.cnf"
     networks:
       - asyncreplication
     environment:
@@ -49,6 +51,7 @@ services:
       - "3343:3306"
     volumes:
       - db3:/var/lib/mysql
+      - "./my.cnf:/etc/mysql/conf.d/server.cnf"
     networks:
       - asyncreplication
     environment:

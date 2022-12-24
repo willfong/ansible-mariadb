@@ -1,0 +1,61 @@
+- name: Initial Setup/Configuration
+  hosts: db
+  gather_facts: no
+  vars:
+    server_id: "{{ inventory_hostname | last }}"
+  tasks:
+    - name: Set server_id
+      delegate_to: localhost
+      community.mysql.mysql_variables:
+        login_user: "{{ admin_user }}"
+        login_host: "{{ inventory_hostname }}"
+        variable: server_id
+        value: "{{ server_id }}"
+        mode: global
+
+- name: Get Information From Primary
+  hosts: primary
+  gather_facts: no
+  tasks:
+    - name: Create Replication User
+      delegate_to: localhost
+      community.mysql.mysql_user:
+        login_user: "{{ admin_user }}"
+        login_host: "{{inventory_hostname}}"
+        name: "{{ replication_user }}"
+        password: "{{ replication_password }}"
+        host: "%"
+        priv: "*.*:REPLICATION SLAVE"
+        state: present
+    - name: Get Primary Status
+      delegate_to: localhost
+      community.mysql.mysql_replication:
+        login_user: "{{ admin_user }}"
+        login_host: "{{inventory_hostname}}"
+        mode: getprimary
+      register: primaryStatus
+    - name: Primary Status
+      ansible.builtin.debug:
+        msg: "{{ primaryStatus }}"
+
+- name: Setup Replicas
+  hosts: replica
+  gather_facts: no
+  tasks:
+    - name: Set Replication Settings
+      delegate_to: localhost
+      community.mysql.mysql_replication:
+        login_user: "{{ admin_user }}"
+        login_host: "{{inventory_hostname}}"
+        mode: changeprimary
+        primary_host: "{{ hostvars[groups.primary|first]['inventory_hostname'] }}"
+        primary_user: "{{ replication_user }}"
+        primary_password: "{{ replication_password }}"
+        primary_log_file: "{{ hostvars[groups.primary|first]['primaryStatus']['File'] }}"
+        primary_log_pos: "{{ hostvars[groups.primary|first]['primaryStatus']['Position'] }}"
+    - name: Start Replication
+      delegate_to: localhost
+      community.mysql.mysql_replication:
+        login_user: "{{ admin_user }}"
+        login_host: "{{inventory_hostname}}"
+        mode: startreplica
