@@ -1,10 +1,14 @@
-- name: Test DB Connectivity
+- name: Get DB Version
   hosts: db
   gather_facts: no
   tasks:
-    - name: Get MySQL version with non-default credentials
+    - name: Get MySQL Version
       delegate_to: localhost
       community.mysql.mysql_info:
         login_user: root
         login_host: "{{inventory_hostname}}"
         filter: version
+      register: versionInfo
+    - name: Version Info
+      ansible.builtin.debug:
+        msg: "{{ versionInfo.version.full }}"
