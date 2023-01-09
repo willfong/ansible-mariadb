@@ -1,0 +1,33 @@
+- name: Clear Docker
+  hosts: localhost
+  tasks:
+    - set_fact:
+        containers: []
+    - name: Get Container Images
+      community.docker.docker_host_info:
+        containers: true
+      register: result
+    - name: Extract
+      set_fact:
+          containers: "{{ containers + [ item.Names[0][1:] ]}}"
+      with_items:
+        - "{{ result.containers  }}"
+      register: result
+    - name: debug
+      ansible.builtin.debug:
+        var: output
+    - name: Stop a container
+      community.docker.docker_container:
+        name: "{{ item }}"
+        state: stopped
+      with_items:
+        - "{{ containers }}"
+    - name: Prune
+      community.docker.docker_prune:
+        containers: true
+        images: true
+        images_filters:
+          dangling: false
+        networks: true
+        volumes: true
+        builder_cache: true
