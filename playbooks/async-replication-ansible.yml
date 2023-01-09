@@ -1,0 +1,147 @@
+- name: Async Replication
+  hosts: localhost
+  vars:
+    network_name: async_replication
+    db_version: mariadb:10.6
+    db_root_password: my-secret-pw
+    db_replication_user: replication_user
+    db_replication_pass: my-replication-pw
+
+    db1srv_name: db1
+    db1srv_port: "3301"
+    db1data_name: db1data
+    db1cnf_name: async-replication-db1.cnf
+    
+    db2srv_name: db2
+    db2srv_port: "3302"
+    db2data_name: db2data
+    db2cnf_name: async-replication-db2.cnf
+
+    db3srv_name: db3
+    db3srv_port: "3303"
+    db3data_name: db3data
+    db3cnf_name: async-replication-db3.cnf
+    
+  tasks:
+    # Install mysqlclient
+    # /opt/homebrew/Cellar/ansible/7.1.0/libexec/bin/pip3 install mysqlclient
+    # - name: What is my python
+    #   ansible.builtin.debug:
+    #     msg: "{{ ansible_python_interpreter }}"
+    - name: Create Network
+      community.docker.docker_network:
+        name: "{{ network_name }}"
+
+    - name: Create DB1 Data Volume
+      community.docker.docker_volume:
+        name: "{{ db1data_name }}"
+
+    - name: Create DB2 Data Volume
+      community.docker.docker_volume:
+        name: "{{ db2data_name }}"
+
+    - name: Create DB3 Data Volume
+      community.docker.docker_volume:
+        name: "{{ db3data_name }}"
+
+    - name: Create DB1
+      community.docker.docker_container:
+        name: "{{ db1srv_name }}"
+        state: started
+        image: "{{ db_version }}"
+        env:
+           MARIADB_ROOT_PASSWORD: "{{ db_root_password }}"
+        volumes:
+          - "./{{ db1cnf_name }}:/etc/mysql/my.cnf"
+          - "{{ db1data_name }}:/var/lib/mysql"
+        networks:
+          - name: "{{ network_name }}"
+        ports:
+          - "{{ db1srv_port }}:3306"
+
+    - name: Create DB2
+      community.docker.docker_container:
+        name: "{{ db2srv_name }}"
+        state: started
+        image: "{{ db_version }}"
+        env:
+           MARIADB_ROOT_PASSWORD: "{{ db_root_password }}"
+        volumes:
+          - "./{{ db2cnf_name }}:/etc/mysql/my.cnf"
+          - "{{ db2data_name }}:/var/lib/mysql"
+        networks:
+          - name: "{{ network_name }}"
+        ports:
+          - "{{ db2srv_port }}:3306"
+    
+    # This will be a non-provisioned replica
+    - name: Create DB3
+      community.docker.docker_container:
+        name: "{{ db3srv_name }}"
+        state: started
+        image: "{{ db_version }}"
+        env:
+            MARIADB_ROOT_PASSWORD: "{{ db_root_password }}"
+        volumes:
+          - "./{{ db3cnf_name }}:/etc/mysql/my.cnf"
+          - "{{ db3data_name }}:/var/lib/mysql"
+        networks:
+          - name: "{{ network_name }}"
+        ports:
+          - "{{ db3srv_port }}:3306"
+
+    - name: Wait for database to start up
+      ansible.builtin.wait_for:
+        timeout: 5
+      delegate_to: localhost
+
+    - name: Create Replication User
+      community.mysql.mysql_user:
+        login_host: 127.0.0.1
+        login_port: "{{ db1srv_port }}"
+        login_user: root
+        login_password: "{{ db_root_password }}"
+        name: "{{ db_replication_user }}"
+        host: "%"
+        password: "{{ db_replication_pass }}"
+        priv: "*.*:REPLICATION SLAVE"
+        state: present
+
+    - name: Get Primary Replication Status
+      community.mysql.mysql_replication:
+        login_host: 127.0.0.1
+        login_port: "{{ db1srv_port }}"
+        login_user: root
+        login_password: "{{ db_root_password }}"
+        mode: getprimary
+      register: output
+    
+    - name: Stop Replication
+      community.mysql.mysql_replication:
+        login_host: 127.0.0.1
+        login_port: "{{ db2srv_port }}"
+        login_user: root
+        login_password: "{{ db_root_password }}"
+        mode: stopreplica
+
+    - name: Start Replication
+      community.mysql.mysql_replication:
+        login_host: 127.0.0.1
+        login_port: "{{ db2srv_port }}"
+        login_user: root
+        login_password: "{{ db_root_password }}"
+        mode: changeprimary
+        primary_host: "{{ db1srv_name }}"
+        primary_user: "{{ db_replication_user }}"
+        primary_password: "{{ db_replication_pass }}"
+        primary_log_file: "{{ output.File }}"
+        primary_log_pos: "{{ output.Position }}"
+      register: output
+
+    - name: Start Replication
+      community.mysql.mysql_replication:
+        login_host: 127.0.0.1
+        login_port: "{{ db2srv_port }}"
+        login_user: root
+        login_password: "{{ db_root_password }}"
+        mode: startreplica
