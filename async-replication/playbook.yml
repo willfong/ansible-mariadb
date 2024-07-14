@@ -1,0 +1,98 @@
+---
+- name: Install MariaDB and setup replication
+  hosts: db_servers
+  become: yes
+  vars:
+    replication_user: "repl_user"
+    replication_password: "repl_pass"
+
+  tasks:
+    - name: Install prerequisites
+      yum:
+        name: wget
+        state: present
+
+    - name: Download mariadb_repo_setup script
+      get_url:
+        url: https://r.mariadb.com/downloads/mariadb_repo_setup
+        dest: /tmp/mariadb_repo_setup
+        mode: '0755'
+
+    - name: Verify mariadb_repo_setup script checksum
+      shell: |
+        echo "26e5bf36846003c4fe455713777a4e4a613da0df3b7f74b6dad1cb901f324a84  /tmp/mariadb_repo_setup" | sha256sum -c -
+
+    - name: Run mariadb_repo_setup script
+      shell: /tmp/mariadb_repo_setup
+
+    - name: Install MariaDB
+      yum:
+        name: MariaDB-server
+        state: present
+        update_cache: yes
+
+    - name: Copy db1.cnf to DB1
+      copy:
+        src: files/db1.cnf
+        dest: /etc/my.cnf
+      when: inventory_hostname == "DB1"
+
+    - name: Copy db2.cnf to DB2
+      copy:
+        src: files/db2.cnf
+        dest: /etc/my.cnf
+      when: inventory_hostname == "DB2"
+
+    - name: Copy db3.cnf to DB3
+      copy:
+        src: files/db3.cnf
+        dest: /etc/my.cnf
+      when: inventory_hostname == "DB3"
+
+    - name: Ensure MariaDB is started and enabled
+      service:
+        name: mariadb
+        state: started
+        enabled: yes
+
+    - name: Create replication user on DB1
+      shell: |
+        mysql -u root -e "CREATE USER '{{ replication_user }}'@'%' IDENTIFIED BY '{{ replication_password }}';"
+        mysql -u root -e "GRANT REPLICATION SLAVE ON *.* TO '{{ replication_user }}'@'%';"
+        mysql -u root -e "FLUSH PRIVILEGES;"
+      when: inventory_hostname == "DB1"
+
+    - name: Configure GTID on DB1
+      shell: |
+        mysql -u root -e "SET GLOBAL gtid_slave_pos = '0-1-0';"
+      when: inventory_hostname == "DB1"
+
+    - name: Get Master Status on DB1
+      shell: |
+        mysql -u root -e "SHOW MASTER STATUS\G" | grep File | awk '{print $2}'
+      register: master_file
+      when: inventory_hostname == "DB1"
+
+    - name: Get Master Position on DB1
+      shell: |
+        mysql -u root -e "SHOW MASTER STATUS\G" | grep Position | awk '{print $2}'
+      register: master_position
+      when: inventory_hostname == "DB1"
+
+    - name: Configure replication on DB2 and DB3
+      shell: |
+        mysql -u root -e "STOP SLAVE;"
+        mysql -u root -e "CHANGE MASTER TO MASTER_HOST='DB1', MASTER_USER='{{ replication_user }}', MASTER_PASSWORD='{{ replication_password }}', MASTER_LOG_FILE='{{ master_file.stdout }}', MASTER_LOG_POS={{ master_position.stdout }}, MASTER_USE_GTID=current_pos;"
+        mysql -u root -e "START SLAVE;"
+      when: inventory_hostname in ["DB2", "DB3"]
+
+    - name: Restart MariaDB to apply configuration changes
+      service:
+        name: mariadb
+        state: restarted
+
+  handlers:
+    - name: Restart MariaDB
+      service:
+        name: mariadb
+        state: restarted

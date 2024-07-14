@@ -1,0 +1,8 @@
+[mariadb]
+innodb_buffer_pool_size=256M
+gtid_strict_mode=ON
+enforce_gtid_consistency=ON
+log-bin
+server_id=1
+log-basename=db1
+binlog-format=row
